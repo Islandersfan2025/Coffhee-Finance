@@ -6,9 +6,11 @@ import { EIP712 } from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/Pausable.sol";
 import "./OrderMixin.sol";
+import "./interfaces/IAmountGetter.sol";
 
+import {FHE, euint64, InEuint64} from "@fhenixprotocol/cofhe-contracts/FHE.sol";
 
-contract EncryptedLimitOrder is
+contract EncryptedLimitOrder is IAmountGetter,
     EIP712("1inch Limit Order Protocol", "4"),
     Ownable,
     Pausable,
