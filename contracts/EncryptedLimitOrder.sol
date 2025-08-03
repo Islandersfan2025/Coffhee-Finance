@@ -2,40 +2,90 @@
 
 pragma solidity 0.8.23;
 
-import { EIP712 } from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/utils/Pausable.sol";
-import "./OrderMixin.sol";
-import "./interfaces/IAmountGetter.sol";
+import "@openzeppelin/contracts/utils/math/Math.sol";
+import ".../interfaces/IOrderMixin.sol";
+import ".../interfaces/IAmountGetter.sol";
 
 import {FHE, euint64, InEuint64} from "@fhenixprotocol/cofhe-contracts/FHE.sol";
 
-contract EncryptedLimitOrder is IAmountGetter,
-    EIP712("1inch Limit Order Protocol", "4"),
-    Ownable,
-    Pausable,
-    OrderMixin
-{
-    // solhint-disable-next-line no-empty-blocks
-    constructor(IWETH _weth) OrderMixin(_weth) Ownable(msg.sender) {}
+contract EncryptedLimitOrder is IAmountGetter {
+    error IncorrectRange();
 
-    /// @dev Returns the domain separator for the current chain (EIP-712)
-    // solhint-disable-next-line func-name-mixedcase
-    function DOMAIN_SEPARATOR() external view returns(bytes32) {
-        return _domainSeparatorV4();
+    modifier correctPrices(euint256 priceStart, euint256 priceEnd) {
+        if (priceEnd <= priceStart) revert IncorrectRange();
+        _;
     }
 
-    /**
-     * @notice Pauses all the trading functionality in the contract.
-     */
-    function pause() external onlyOwner {
-        _pause();
+    function takingAmountData(
+        IOrderMixin.Order calldata order,
+        bytes calldata /* extension */,
+        bytes32 /* orderHash */,
+        eaddress /* taker */,
+        euint256 makingAmount,
+        euint256 remainingMakingAmount,
+        bytes calldata extraData
+    ) external pure returns (euint256) {
+        (
+            euint256 priceStart,
+            euint256 priceEnd
+        ) = abi.decode(extraData, (euint256, euint256));
+        return takingAmountData(priceStart, priceEnd, order.makingAmount, makingAmount, remainingMakingAmount);
     }
 
-    /**
-     * @notice Unpauses all the trading functionality in the contract.
-     */
-    function unpause() external onlyOwner {
-        _unpause();
+    function makingAmountData(
+        IOrderMixin.Order calldata order,
+        bytes calldata /* extension */,
+        bytes32 /* orderHash */,
+        eaddress /* taker */,
+        euint256 takingAmount,
+        euint256 remainingMakingAmount,
+        bytes calldata extraData
+    ) external pure returns (uint256) {
+        (
+            euint256 priceStart,
+            euint256 priceEnd
+        ) = abi.decode(extraData, (euint256, euint256));
+        return makingAmountData(priceStart, priceEnd, order.makingAmount, takingAmount, remainingMakingAmount);
+    }
+
+    function takerAmountData(
+        euint256 priceStart,
+        euint256 priceEnd,
+        euint256 orderMakingAmount,
+        euint256 makingAmount,
+        euint256 remainingMakingAmount
+    ) public correctPrices(priceStart, priceEnd) pure returns(euint256) {
+        euint256 alreadyFilledMakingAmount = orderMakingAmount - remainingMakingAmount;
+        /**
+         * rangeTakerAmount = (
+         *       f(makerAmountFilled) + f(makerAmountFilled + fillAmount)
+         *   ) * fillAmount / 2 / 1e18
+         *
+         *  scaling to 1e18 happens to have better price accuracy
+         */
+        return (
+            (priceEnd - priceStart) * (2 * alreadyFilledMakingAmount + makingAmount) / orderMakingAmount +
+            2 * priceStart
+        ) * makingAmount / 2e18;
+    }
+
+    function makerAmountData(
+        euint256 priceStart,
+        euint256 priceEnd,
+        euint256 orderMakingAmount,
+        euint256 takingAmount,
+        euint256 remainingMakingAmount
+    ) public correctPrices(priceStart, priceEnd) pure returns(euint256) {
+        euint256 alreadyFilledMakingAmount = orderMakingAmount - remainingMakingAmount;
+        euint256 b = priceStart;
+        euint256 k = (priceEnd - priceStart) * 1e18 / orderMakingAmount;
+        euint256 bDivK = priceStart * orderMakingAmount / (priceEnd - priceStart);
+        return (Math.sqrt(
+            (
+                b * bDivK +
+                alreadyFilledMakingAmount * (2 * b + k * alreadyFilledMakingAmount / 1e18) +
+                2 * takingAmount * 1e18
+            ) / k * 1e18
+        ) - bDivK) - alreadyFilledMakingAmount;
     }
 }
