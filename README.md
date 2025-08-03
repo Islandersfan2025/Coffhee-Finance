@@ -1,5 +1,5 @@
 # Encrypted Limit Orders
-Coffhee Finance introduces encrypted limit orders by combining the **1inch Limit Order Protocol** with **Fully Homomorphic Encryption (FHE)** via **FHE Solidity libraries**. This integration allows users to create limit orders where key order details (like price or amount) remain **encrypted on-chain**, preserving privacy until execution.
+Encrypted Finance introduces encrypted limit orders by combining the **1inch Limit Order Protocol** with **Fully Homomorphic Encryption (FHE)** via **FHE Solidity libraries**. This integration allows users to create limit orders where key order details (like price or amount) remain **encrypted on-chain**, preserving privacy until execution.
 
 Key Features:
 
